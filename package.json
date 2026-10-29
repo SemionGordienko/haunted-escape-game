@@ -1,0 +1,36 @@
+{
+  "name": "haunted-escape-game",
+  "version": "1.0.0",
+  "description": "Побег из проклятого особняка — classroom chase game",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist:win": "electron-builder --win portable --x64"
+  },
+  "devDependencies": {
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "school.haunted.escape",
+    "productName": "Побег из особняка",
+    "asar": true,
+    "files": [
+      "index.html",
+      "main.js",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "Pobeg-iz-osobnyaka-${version}-portable.${ext}"
+    }
+  }
+}

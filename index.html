@@ -1,0 +1,795 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Побег из проклятого особняка — 16-bit</title>
+<style>
+:root{
+  --bg:#07050a;
+  --panel:#140f19;
+  --ink:#f1e4d2;
+  --muted:#b5a8b9;
+  --good:#9fdb89;
+  --bad:#ea726d;
+  --gold:#c8a15c;
+  --blood:#7a1322;
+}
+*{box-sizing:border-box}
+body{
+  margin:0;
+  background:radial-gradient(circle at 50% 0%, #25142d 0%, #120c17 32%, #07050a 72%);
+  color:var(--ink);
+  font-family:"Courier New", monospace;
+  min-height:100vh;
+  display:flex;
+  justify-content:center;
+  padding:18px;
+}
+.wrap{width:min(1180px,100%)}
+h1{
+  margin:0 0 8px;
+  font-size:clamp(26px,4vw,46px);
+  letter-spacing:2px;
+  text-shadow:4px 4px 0 #000;
+}
+.sub{color:var(--muted);font-size:14px;line-height:1.45;margin-bottom:13px}
+.hud{
+  display:grid;
+  grid-template-columns:repeat(6,1fr);
+  gap:10px;
+  margin-bottom:10px;
+}
+.card{
+  background:var(--panel);
+  border:3px solid #000;
+  outline:2px solid #5a4760;
+  padding:10px 12px;
+  box-shadow:5px 5px 0 #000;
+}
+.label{font-size:11px;color:var(--muted);margin-bottom:4px}
+.value{font-weight:700;font-size:18px}
+.safe{color:var(--good)}
+.danger{color:var(--bad)}
+canvas{
+  width:100%;
+  height:auto;
+  display:block;
+  image-rendering:pixelated;
+  background:#110b15;
+  border:4px solid #000;
+  outline:2px solid #6b536c;
+  box-shadow:8px 8px 0 #000;
+}
+.bar{
+  height:26px;
+  margin:12px 0 6px;
+  border:3px solid #000;
+  outline:2px solid #5b485f;
+  background:#241a2b;
+  position:relative;
+}
+#gapBar{
+  height:100%;
+  width:45%;
+  background:linear-gradient(90deg,#8f1123,#c8a15c,#7fbe72);
+  transition:width .12s linear;
+}
+.barText{
+  position:absolute;inset:0;
+  display:flex;align-items:center;justify-content:center;
+  color:#100b12;font-weight:900;font-size:12px;text-shadow:0 1px #fff8;
+}
+.controls{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:14px;
+  margin-top:14px;
+}
+button{
+  border:4px solid #000;
+  font-family:inherit;
+  font-weight:900;
+  font-size:clamp(22px,4vw,36px);
+  padding:18px 12px;
+  cursor:pointer;
+  box-shadow:7px 7px 0 #000;
+}
+button:active{transform:translate(4px,4px);box-shadow:3px 3px 0 #000}
+#yay{background:#a6e38d}
+#boo{background:#d96b68}
+#restart{width:100%;margin-top:12px;background:#d9b45b;font-size:16px;padding:10px}
+button:disabled{opacity:.5;filter:grayscale(1);cursor:not-allowed}
+.message{
+  margin-top:12px;background:#17111e;border-left:6px solid #d9b45b;
+  padding:12px;min-height:58px;font-size:14px;line-height:1.45
+}
+.rules{margin-top:12px;color:var(--muted);font-size:12px;line-height:1.45}
+kbd{background:#2b3144;border:1px solid #555f7a;padding:1px 5px;color:white}
+
+.end-screen{
+  display:none;
+  width:100%;
+  aspect-ratio:1120/640;
+  border:4px solid #000;
+  outline:2px solid #6b536c;
+  box-shadow:8px 8px 0 #000;
+  background:#08060c;
+  position:relative;
+  overflow:hidden;
+}
+.end-screen.active{display:block}
+.end-screen svg{width:100%;height:100%;display:block;image-rendering:pixelated}
+
+@media(max-width:950px){.hud{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:640px){.hud{grid-template-columns:repeat(2,1fr)}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>ПОБЕГ ИЗ ПРОКЛЯТОГО ОСОБНЯКА</h1>
+  <div class="sub">
+    10 заданий. Призрак постоянно движется с одной скоростью. При <b>УРА</b> герой и призрак одновременно прыгают вперёд, поэтому текущая дистанция между ними сохраняется. При <b>БУГА-ГА</b> герой падает и не двигается, а призрак проходит половину текущего разрыва. Таймер уменьшается от 40 секунд в первом задании до 15 секунд в десятом.
+  </div>
+
+  <div class="hud">
+    <div class="card"><div class="label">ЗАДАНИЕ</div><div class="value" id="round">1 / 10</div></div>
+    <div class="card"><div class="label">УСПЕХИ</div><div class="value" id="success">0</div></div>
+    <div class="card"><div class="label">ВРЕМЯ</div><div class="value" id="timer">40.0</div></div>
+    <div class="card"><div class="label">ЛИМИТ РАУНДА</div><div class="value" id="speed">40 сек</div></div>
+    <div class="card"><div class="label">РАЗРЫВ</div><div class="value" id="gap">—</div></div>
+    <div class="card"><div class="label">СТАТУС</div><div class="value safe" id="status">БЕЖИ!</div></div>
+  </div>
+
+  
+<canvas id="game" width="1120" height="640"></canvas>
+
+<div id="endScreen" class="end-screen" aria-live="polite">
+  <svg id="winArt" viewBox="0 0 1120 640" style="display:none" shape-rendering="crispEdges">
+    <rect width="1120" height="640" fill="#090711"/>
+    <rect width="1120" height="90" y="0" fill="#100a19"/>
+    <rect width="1120" height="90" y="90" fill="#151020"/>
+    <rect width="1120" height="90" y="180" fill="#1b1428"/>
+    <rect width="1120" height="90" y="270" fill="#211831"/>
+    <rect x="910" y="70" width="88" height="88" fill="#d8d0b2"/>
+    <rect x="925" y="85" width="58" height="58" fill="#c6bf9d"/>
+
+    <polygon points="0,470 160,430 310,452 455,390 590,425 730,350 880,368 1120,295 1120,640 0,640"
+             fill="#0d0e16"/>
+
+    <rect x="690" y="200" width="190" height="155" fill="#05060a"/>
+    <rect x="720" y="145" width="42" height="60" fill="#05060a"/>
+    <rect x="805" y="125" width="50" height="80" fill="#05060a"/>
+    <rect x="655" y="242" width="40" height="113" fill="#05060a"/>
+    <rect x="875" y="225" width="37" height="130" fill="#05060a"/>
+    <rect x="735" y="265" width="25" height="90" fill="#05060a"/>
+    <rect x="812" y="265" width="25" height="90" fill="#05060a"/>
+
+    <rect x="818" y="155" width="7" height="7" fill="#d7ae55"/>
+    <rect x="740" y="292" width="7" height="10" fill="#d7ae55"/>
+    <rect x="816" y="292" width="7" height="10" fill="#d7ae55"/>
+
+    <rect x="155" y="430" width="12" height="100" fill="#101018"/>
+    <rect x="130" y="418" width="60" height="10" fill="#101018"/>
+    <rect x="965" y="390" width="12" height="110" fill="#101018"/>
+    <rect x="940" y="375" width="60" height="10" fill="#101018"/>
+
+    <rect x="135" y="540" width="24" height="26" fill="#6f8fc5"/>
+    <rect x="140" y="527" width="14" height="13" fill="#deb392"/>
+    <rect x="132" y="566" width="8" height="18" fill="#272532"/>
+    <rect x="154" y="566" width="8" height="18" fill="#272532"/>
+
+    <text x="65" y="90" fill="#f2e7d5" font-family="Courier New" font-size="38" font-weight="bold">ВЫ СПАСЛИСЬ!</text>
+    <text x="66" y="128" fill="#d7cdbf" font-family="Courier New" font-size="20">Герой выбрался из проклятого дома.</text>
+    <text x="66" y="158" fill="#d7cdbf" font-family="Courier New" font-size="20">Замок остался далеко на ночном холме.</text>
+  </svg>
+
+  <svg id="loseArt" viewBox="0 0 1120 640" style="display:none" shape-rendering="crispEdges">
+    <rect width="1120" height="640" fill="#25050b"/>
+    <rect x="24" y="24" width="1072" height="592" fill="#09050c"/>
+    <rect x="40" y="40" width="1040" height="560" fill="#170812"/>
+
+    <!-- giant 16-bit ghost -->
+    <rect x="345" y="115" width="430" height="350" fill="#d9dfef"/>
+    <rect x="345" y="465" width="110" height="100" fill="#c5cee1"/>
+    <rect x="505" y="465" width="110" height="100" fill="#c5cee1"/>
+    <rect x="665" y="465" width="110" height="100" fill="#c5cee1"/>
+
+    <rect x="390" y="150" width="55" height="135" fill="#eef3ff" opacity=".45"/>
+    <rect x="675" y="160" width="45" height="110" fill="#eef3ff" opacity=".35"/>
+
+    <rect x="430" y="215" width="70" height="68" fill="#120d17"/>
+    <rect x="620" y="215" width="70" height="68" fill="#120d17"/>
+    <rect x="451" y="237" width="25" height="25" fill="#d2263f"/>
+    <rect x="641" y="237" width="25" height="25" fill="#d2263f"/>
+
+    <rect x="438" y="335" width="245" height="125" fill="#19070e"/>
+    <rect x="454" y="345" width="32" height="28" fill="#eee3d4"/>
+    <rect x="494" y="345" width="32" height="28" fill="#eee3d4"/>
+    <rect x="534" y="345" width="32" height="28" fill="#eee3d4"/>
+    <rect x="574" y="345" width="32" height="28" fill="#eee3d4"/>
+    <rect x="614" y="345" width="32" height="28" fill="#eee3d4"/>
+    <rect x="654" y="345" width="20" height="28" fill="#eee3d4"/>
+
+    <rect x="470" y="400" width="180" height="50" fill="#8c142b"/>
+
+    <text x="340" y="78" fill="#ff5360" font-family="Courier New" font-size="43" font-weight="bold">ВАС ДОГНАЛИ!</text>
+    <text x="338" y="605" fill="#f2e7d5" font-family="Courier New" font-size="22">БУ-ГА-ГА! Призрак настиг героя.</text>
+  </svg>
+</div>
+  <div class="bar"><div id="gapBar"></div><div class="barText">ЗАПАС ДИСТАНЦИИ</div></div>
+
+  <div class="controls">
+    <button id="yay">УРА</button>
+    <button id="boo">БУГА-ГА</button>
+  </div>
+  <button id="restart">НАЧАТЬ ЗАНОВО</button>
+
+  <div class="message" id="message">Задание 1. У вас есть 40 секунд. Призрак уже движется.</div>
+
+  <div class="rules">
+    <b>УРА</b> — герой и призрак прыгают вперёд на одинаковое расстояние: разрыв сохраняется.
+    <b>БУГА-ГА</b> — герой остаётся на месте, а призрак сокращает текущую дистанцию ровно вдвое.
+    Между ответами призрак всё время продолжает идти. Таймер: от 40 секунд в первом задании до 15 секунд в десятом.
+    Клавиши: <kbd>U</kbd> — «УРА», <kbd>B</kbd> — «БУГА-ГА».
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+ctx.imageSmoothingEnabled = false;
+
+const roundEl   = document.getElementById('round');
+const successEl = document.getElementById('success');
+const timerEl   = document.getElementById('timer');
+const speedEl   = document.getElementById('speed');
+const gapEl     = document.getElementById('gap');
+const statusEl  = document.getElementById('status');
+const gapBar    = document.getElementById('gapBar');
+const msgEl     = document.getElementById('message');
+const yay       = document.getElementById('yay');
+const boo       = document.getElementById('boo');
+const restart   = document.getElementById('restart');
+const endScreen = document.getElementById('endScreen');
+const winArt = document.getElementById('winArt');
+const loseArt = document.getElementById('loseArt');
+
+const TOTAL = 10;
+const START_TIME = 40;
+const END_TIME = 15;
+
+const GHOST_SPEED = 0.00082;        // fixed continuous pursuit speed
+const SUCCESS_JUMP = 0.095;       // BOTH hero and ghost move this far on "УРА"
+const TIMEOUT_FRACTION = 0.55;     // timeout consumes 55% of the current gap
+const START_HERO  = 0.115;
+const START_GHOST = 0.022;
+
+const path = [
+ {x:90,y:540},{x:220,y:540},{x:340,y:540},{x:340,y:450},
+ {x:475,y:450},{x:610,y:450},{x:610,y:545},{x:750,y:545},
+ {x:890,y:545},{x:890,y:445},{x:1010,y:445},{x:1010,y:320},
+ {x:890,y:320},{x:745,y:320},{x:745,y:180},{x:605,y:180},
+ {x:470,y:180},{x:470,y:315},{x:340,y:315},{x:205,y:315},
+ {x:205,y:180},{x:85,y:180}
+];
+
+let round, successCount, heroP, ghostP, timeLeft, roundLimit;
+let running, lastTime, fallenUntil, ghostLungeUntil, gameOutcome;
+
+function clamp(v,a,b){ return Math.max(a, Math.min(b,v)); }
+function lerp(a,b,t){ return a + (b-a)*t; }
+function pointOnPath(t){
+  t = clamp(t,0,1);
+  const s = t*(path.length-1), i = Math.min(path.length-2, Math.floor(s)), u = s-i;
+  return { x:path[i].x+(path[i+1].x-path[i].x)*u, y:path[i].y+(path[i+1].y-path[i].y)*u };
+}
+function gap(){ return heroP - ghostP; }
+function currentGhostSpeed(){ return GHOST_SPEED; }
+function currentRoundLimit(){
+  const t = clamp((round - 1) / (TOTAL - 1), 0, 1);
+  return lerp(START_TIME, END_TIME, t);
+}
+function ghostSpeedMult(){ return 1; }
+
+function pixelText(text,x,y,size=15,color="#e9deca"){
+  ctx.fillStyle = color;
+  ctx.font = `bold ${size}px "Courier New", monospace`;
+  ctx.fillText(text,x,y);
+}
+
+/* ---------- decor ---------- */
+function candle(x,y,scale=1){
+  ctx.fillStyle="#e7d5a0"; ctx.fillRect(x,y,5*scale,18*scale);
+  ctx.fillStyle="#b78337"; ctx.fillRect(x-2*scale,y+16*scale,9*scale,3*scale);
+  ctx.fillStyle="#e3883d"; ctx.fillRect(x+1*scale,y-7*scale,3*scale,7*scale);
+  ctx.fillStyle="#fff1a7"; ctx.fillRect(x+2*scale,y-9*scale,1*scale,4*scale);
+}
+function candelabrum(x,y){
+  ctx.strokeStyle="#b78b45"; ctx.lineWidth=4;
+  ctx.beginPath();
+  ctx.moveTo(x,y);ctx.lineTo(x,y+28);
+  ctx.moveTo(x-25,y+11);ctx.lineTo(x+25,y+11);
+  ctx.moveTo(x-25,y+11);ctx.lineTo(x-36,y+21);
+  ctx.moveTo(x+25,y+11);ctx.lineTo(x+36,y+21);
+  ctx.stroke();
+  candle(x-38,y+15,.9); candle(x-2,y-10,.9); candle(x+33,y+15,.9);
+}
+function portrait(x,y,w=48,h=68,evil=false){
+  ctx.fillStyle="#a07a3f";ctx.fillRect(x-6,y-6,w+12,h+12);
+  ctx.fillStyle="#1b1320";ctx.fillRect(x,y,w,h);
+  ctx.fillStyle=evil?"#bb9487":"#d3ae91";ctx.fillRect(x+w/2-8,y+13,16,18);
+  ctx.fillStyle="#3a2431";ctx.fillRect(x+w/2-12,y+33,24,24);
+  ctx.fillStyle="#100d12";
+  ctx.fillRect(x+w/2-6,y+18,3,2); ctx.fillRect(x+w/2+3,y+18,3,2);
+  if(evil){
+    ctx.fillStyle="#851726";
+    ctx.fillRect(x+w/2-5,y+27,10,3);
+    ctx.fillRect(x+8,y+9,5,7);
+  }
+}
+function gothicArch(x,y,w,h){
+  ctx.strokeStyle="#8c6b46";ctx.lineWidth=6;
+  ctx.beginPath();
+  ctx.moveTo(x,y+h);ctx.lineTo(x,y+38);
+  ctx.quadraticCurveTo(x+w/2,y-24,x+w,y+38);
+  ctx.lineTo(x+w,y+h);
+  ctx.stroke();
+}
+function chandelier(x,y){
+  ctx.strokeStyle="#b48b47";ctx.lineWidth=4;
+  ctx.beginPath();
+  ctx.moveTo(x,y);ctx.lineTo(x,y+34);
+  ctx.moveTo(x-40,y+35);ctx.lineTo(x+40,y+35);
+  ctx.moveTo(x-40,y+35);ctx.lineTo(x-52,y+52);
+  ctx.moveTo(x+40,y+35);ctx.lineTo(x+52,y+52);
+  ctx.stroke();
+  candle(x-53,y+47,1);candle(x-3,y+28,1);candle(x+47,y+47,1);
+}
+function table(x,y,w=120){
+  ctx.fillStyle="#6d452a";ctx.fillRect(x,y,w,14);
+  ctx.fillStyle="#3c251a";ctx.fillRect(x+8,y+14,12,45);ctx.fillRect(x+w-20,y+14,12,45);
+  ctx.fillStyle="#a4793e";ctx.fillRect(x+4,y-4,w-8,4);
+}
+function mirror(x,y,w=42,h=78){
+  ctx.fillStyle="#a37b40";ctx.fillRect(x-6,y-6,w+12,h+12);
+  ctx.fillStyle="#6e7b8e";ctx.fillRect(x,y,w,h);
+  ctx.fillStyle="#c7d3de";ctx.fillRect(x+6,y+8,4,h-16);
+  ctx.fillStyle="#929dad";ctx.fillRect(x+14,y+8,2,h-16);
+  ctx.fillStyle="#445";ctx.fillRect(x+w-9,y+10,3,h-20);
+}
+function bloodSmear(x,y,len=55){
+  ctx.fillStyle="#6d101b";
+  ctx.fillRect(x,y,len,7);
+  ctx.fillRect(x+len-11,y+6,8,11);
+  ctx.fillRect(x+13,y+7,5,18);
+  ctx.fillRect(x+31,y+4,4,12);
+}
+function cobweb(x,y,size=40){
+  ctx.strokeStyle="#d2cbd555";ctx.lineWidth=1;
+  ctx.beginPath();
+  ctx.moveTo(x,y);ctx.lineTo(x+size,y);
+  ctx.moveTo(x,y);ctx.lineTo(x,y+size);
+  ctx.moveTo(x,y);ctx.lineTo(x+size,y+size);
+  ctx.moveTo(x,y);ctx.lineTo(x+size/2,y+size);
+  for(let r=10;r<=size;r+=10){
+    ctx.moveTo(x,y+r);
+    ctx.quadraticCurveTo(x+r/2,y+r/2,x+r,y);
+  }
+  ctx.stroke();
+}
+function spider(x,y,scale=1){
+  ctx.fillStyle="#070609";
+  ctx.fillRect(x,y,8*scale,7*scale);
+  ctx.fillRect(x+2*scale,y-4*scale,4*scale,4*scale);
+  ctx.strokeStyle="#070609"; ctx.lineWidth=2;
+  for(let i=0;i<4;i++){
+    ctx.beginPath();
+    ctx.moveTo(x+1*scale,y+2*scale+i);
+    ctx.lineTo(x-7*scale-i*2,y-2*scale+i*4);
+    ctx.moveTo(x+7*scale,y+2*scale+i);
+    ctx.lineTo(x+15*scale+i*2,y-2*scale+i*4);
+    ctx.stroke();
+  }
+}
+function skull(x,y){
+  ctx.fillStyle="#d1c8ba";ctx.fillRect(x,y,16,12);
+  ctx.fillRect(x+4,y+12,8,6);
+  ctx.fillStyle="#120d12";
+  ctx.fillRect(x+3,y+3,3,3); ctx.fillRect(x+10,y+3,3,3); ctx.fillRect(x+7,y+8,2,3);
+}
+
+function drawHouse(){
+  ctx.fillStyle="#0f0a14"; ctx.fillRect(0,0,canvas.width,canvas.height);
+  const rooms=[
+    [35,50,300,255,"#24111f"],[350,50,315,255,"#1a1430"],[685,50,400,255,"#2f1320"],
+    [35,335,300,250,"#211528"],[350,335,315,250,"#291520"],[685,335,400,250,"#1d1526"]
+  ];
+  for(const [x,y,w,h,c] of rooms){
+    ctx.fillStyle=c; ctx.fillRect(x,y,w,h);
+    ctx.fillStyle="#ffffff0a";
+    for(let xx=x+18;xx<x+w;xx+=26){
+      ctx.fillRect(xx,y,4,h);
+      ctx.fillRect(xx+8,y+8,2,h-16);
+    }
+    ctx.fillStyle="#c9a55a18";
+    for(let yy=y+20;yy<y+h;yy+=40){
+      for(let xx=x+12;xx<x+w;xx+=46){
+        ctx.fillRect(xx,yy,5,5); ctx.fillRect(xx+5,yy+5,5,5);
+        ctx.fillRect(xx+10,yy,5,5); ctx.fillRect(xx+5,yy-5,5,5);
+      }
+    }
+    ctx.strokeStyle="#6f533f"; ctx.lineWidth=6; ctx.strokeRect(x,y,w,h);
+  }
+
+  ctx.fillStyle="#0f0a14";
+  ctx.fillRect(335,140,42,72); ctx.fillRect(665,130,42,78);
+  ctx.fillRect(335,425,42,72); ctx.fillRect(665,420,42,74);
+  ctx.fillRect(135,305,85,30); ctx.fillRect(495,305,85,30); ctx.fillRect(860,305,90,30);
+
+  gothicArch(105,72,110,160);
+  gothicArch(457,72,110,160);
+  gothicArch(820,72,120,160);
+
+  mirror(52,94,40,80);
+  portrait(250,100,48,68,true);
+  mirror(362,96,42,80);
+  portrait(590,98,48,68,false);
+  mirror(696,96,40,80);
+  portrait(980,102,50,70,true);
+
+  chandelier(185,58);
+  chandelier(515,58);
+  chandelier(900,58);
+
+  table(98,220,120); table(427,220,120); table(790,225,130);
+  table(92,485,110); table(440,485,110); table(820,485,120);
+
+  candelabrum(154,190); candelabrum(485,190); candelabrum(855,195);
+  candle(124,456,1); candle(480,457,1); candle(854,457,1);
+
+  ctx.fillStyle="#4d2232";ctx.fillRect(220,463,78,54);
+  ctx.fillStyle="#9a753d";ctx.fillRect(216,455,86,8);
+  ctx.fillStyle="#37253d";ctx.fillRect(562,462,80,56);
+  ctx.fillStyle="#a17a3d";ctx.fillRect(558,454,88,8);
+  ctx.fillStyle="#482530";ctx.fillRect(970,458,70,60);
+  ctx.fillStyle="#9c7638";ctx.fillRect(966,450,78,8);
+
+  const rugs=[[100,358,165,28,"#4e1728"],[430,358,155,28,"#342047"],[805,358,170,28,"#531927"]];
+  for(const [x,y,w,h,c] of rugs){
+    ctx.fillStyle=c;ctx.fillRect(x,y,w,h);
+    ctx.fillStyle="#b28a43";
+    for(let xx=x+8;xx<x+w-10;xx+=22)ctx.fillRect(xx,y+8,8,8);
+  }
+
+  for(const [x,y,s] of [[35,50,45],[290,50,42],[350,50,45],[618,50,42],[685,50,48],[1040,50,40],[35,335,42],[1036,335,45]]) cobweb(x,y,s);
+  for(const [x,y,s] of [[295,83,1],[620,76,1.1],[1035,95,1],[48,387,1],[1010,395,1.1],[725,66,.9]]) spider(x,y,s);
+
+  bloodSmear(240,272,65); bloodSmear(540,125,54); bloodSmear(738,272,82);
+  bloodSmear(270,556,52); bloodSmear(965,565,64); bloodSmear(70,522,40);
+
+  skull(280,515); skull(620,514); skull(1018,515);
+
+  const wallCandles=[[52,210],[300,208],[370,210],[645,208],[706,208],[1060,208],[52,536],[300,536],[370,536],[645,536],[706,536],[1060,536]];
+  for(const [x,y] of wallCandles) candle(x,y,.9);
+
+  ctx.strokeStyle="#c8a15c55"; ctx.lineWidth=3; ctx.setLineDash([8,10]);
+  ctx.beginPath(); ctx.moveTo(path[0].x,path[0].y);
+  for(let i=1;i<path.length;i++) ctx.lineTo(path[i].x,path[i].y);
+  ctx.stroke(); ctx.setLineDash([]);
+
+  pixelText("ВЫХОД",28,166,18,"#e6c76d");
+}
+function drawHero(p,fallen){
+  ctx.save(); ctx.translate(p.x,p.y);
+  if(fallen){ ctx.rotate(Math.PI/2); ctx.translate(6,0); }
+  ctx.fillStyle="#1f1d2f";ctx.fillRect(-12,-3,24,20);
+  ctx.fillStyle="#6f8fc5";ctx.fillRect(-10,-25,20,24);
+  ctx.fillStyle="#d5b06a";ctx.fillRect(-2,-24,4,22);
+  ctx.fillStyle="#deb392";ctx.fillRect(-8,-37,16,12);
+  ctx.fillStyle="#3b2835";ctx.fillRect(-9,-39,18,5);
+  ctx.fillStyle="#2b2833";ctx.fillRect(-9,-1,7,18);ctx.fillRect(2,-1,7,18);
+  ctx.fillStyle="#fbf0e3";ctx.fillRect(-4,-32,2,2);ctx.fillRect(3,-32,2,2);
+  ctx.restore();
+}
+function drawGhost(p,lunge){
+  ctx.save(); ctx.translate(p.x,p.y);
+  if(lunge) ctx.scale(1.35,1.35);
+  ctx.fillStyle="#d5dced";ctx.fillRect(-17,-31,34,34);
+  ctx.fillStyle="#bac5db";ctx.fillRect(-17,3,10,13);ctx.fillRect(-3,3,10,13);ctx.fillRect(11,3,6,13);
+  ctx.fillStyle="#1a1420";ctx.fillRect(-9,-19,6,7);ctx.fillRect(3,-19,6,7);
+  ctx.fillStyle="#7b243a";ctx.fillRect(-5,-8,10,3);
+  ctx.fillStyle="#ffffff55";ctx.fillRect(-12,-24,4,10);
+  ctx.restore();
+}
+
+/* ---------- ending scenes ---------- */
+function drawWinScene(){
+  ctx.fillStyle="#08070d"; ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  // sky stripes
+  const sky = ["#0d0815","#110b1a","#171023","#1c1430","#22183c"];
+  for(let i=0;i<sky.length;i++){
+    ctx.fillStyle=sky[i];
+    ctx.fillRect(0,i*70,canvas.width,70);
+  }
+
+  // moon
+  ctx.fillStyle="#d9d3b4"; ctx.fillRect(910,70,78,78);
+  ctx.fillStyle="#c8c39f"; ctx.fillRect(922,82,54,54);
+
+  // distant hill
+  ctx.fillStyle="#0f1018";
+  ctx.beginPath();
+  ctx.moveTo(0,470); ctx.lineTo(120,430); ctx.lineTo(280,450); ctx.lineTo(420,390);
+  ctx.lineTo(560,420); ctx.lineTo(720,350); ctx.lineTo(860,365); ctx.lineTo(1120,300);
+  ctx.lineTo(1120,640); ctx.lineTo(0,640); ctx.closePath(); ctx.fill();
+
+  // castle silhouette on hill
+  ctx.fillStyle="#06070b";
+  ctx.fillRect(670,190,170,140);
+  ctx.fillRect(700,135,40,55);
+  ctx.fillRect(770,120,45,70);
+  ctx.fillRect(640,225,35,105);
+  ctx.fillRect(835,210,30,120);
+  ctx.fillRect(720,240,24,90); ctx.fillRect(780,240,24,90);
+  ctx.fillRect(688,182,8,18); ctx.fillRect(735,182,8,18); ctx.fillRect(805,172,8,18); ctx.fillRect(848,182,8,18);
+  ctx.fillStyle="#d9b45b";
+  ctx.fillRect(790,148,6,6);
+  ctx.fillRect(721,267,6,8);
+  ctx.fillRect(781,267,6,8);
+
+  // twisted trees
+  ctx.fillStyle="#111018";
+  ctx.fillRect(165,410,12,90); ctx.fillRect(248,430,10,75); ctx.fillRect(965,360,11,95);
+  ctx.fillRect(210,395,9,70);
+  ctx.fillRect(175,390,30,8); ctx.fillRect(248,410,22,8); ctx.fillRect(945,345,28,8);
+
+  // tiny hero on foreground
+  ctx.fillStyle="#202432"; ctx.fillRect(140,555,26,26);
+  ctx.fillStyle="#6f8fc5"; ctx.fillRect(143,533,20,24);
+  ctx.fillStyle="#deb392"; ctx.fillRect(146,521,14,12);
+
+  pixelText("ВЫ СПАСЛИСЬ!", 70, 80, 34, "#f1e4d2");
+  pixelText("Герой выбрался из дома.", 70, 120, 18, "#d9d1be");
+  pixelText("Проклятый замок остался позади.", 70, 147, 18, "#d9d1be");
+}
+function drawLoseScene(){
+  ctx.fillStyle="#050206"; ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle="#3a0710"; ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle="#12030a"; ctx.fillRect(35,35,canvas.width-70,canvas.height-70);
+
+  // ominous background stripes
+  for(let i=0;i<8;i++){
+    ctx.fillStyle = i%2===0 ? "#1b0c18" : "#130915";
+    ctx.fillRect(0, i*80, canvas.width, 80);
+  }
+
+  // giant laughing ghost close-up
+  ctx.save();
+  ctx.translate(560,330);
+  ctx.fillStyle="#d8dff1";
+  ctx.fillRect(-210,-200,420,330);
+  ctx.fillRect(-210,130,120,85);
+  ctx.fillRect(-50,130,110,85);
+  ctx.fillRect(110,130,100,85);
+
+  // highlights
+  ctx.fillStyle="#f7fbff55";
+  ctx.fillRect(-160,-150,44,110);
+  ctx.fillRect(95,-145,38,90);
+
+  // eyes
+  ctx.fillStyle="#17111b";
+  ctx.fillRect(-110,-90,48,48);
+  ctx.fillRect(62,-90,48,48);
+
+  // red pupils
+  ctx.fillStyle="#c4253a";
+  ctx.fillRect(-94,-74,16,16);
+  ctx.fillRect(78,-74,16,16);
+
+  // huge laughing mouth
+  ctx.fillStyle="#18080f";
+  ctx.fillRect(-105,10,210,100);
+  ctx.fillStyle="#ede1d0";
+  for(let i=0;i<6;i++) ctx.fillRect(-98+i*33,16,22,20);
+  for(let i=0;i<6;i++) ctx.fillRect(-98+i*33,74,22,16);
+  ctx.fillStyle="#8d1630";
+  ctx.fillRect(-70,50,140,40);
+
+  // cheeks / shadows
+  ctx.fillStyle="#c6cee4";
+  ctx.fillRect(-175,-20,35,55);
+  ctx.fillRect(140,-20,35,55);
+  ctx.restore();
+
+  pixelText("ВАС ДОГНАЛИ!", 345, 92, 38, "#ff5964");
+  pixelText("Призрак смеётся прямо перед вами.", 350, 135, 18, "#f1e4d2");
+  pixelText("Попробуйте ещё раз.", 408, 156, 18, "#f1e4d2");
+}
+
+/* ---------- game flow ---------- */
+function hud(){
+  const g = gap();
+  roundEl.textContent = `${Math.min(round,TOTAL)} / ${TOTAL}`;
+  successEl.textContent = String(successCount);
+  timerEl.textContent = timeLeft.toFixed(1);
+  speedEl.textContent = Math.round(roundLimit) + " сек";
+  const pct = clamp(g/0.18*100,0,100);
+  gapBar.style.width = pct + "%";
+  gapEl.textContent = Math.round(pct) + "%";
+
+  if(!running) return;
+  if(g < 0.03){
+    statusEl.textContent = "СОВСЕМ БЛИЗКО!";
+    statusEl.className = "value danger";
+  }else if(g < 0.065){
+    statusEl.textContent = "ОПАСНО";
+    statusEl.className = "value danger";
+  }else{
+    statusEl.textContent = "БЕЖИ!";
+    statusEl.className = "value safe";
+  }
+}
+function endGame(outcome, message){
+  running = false;
+  gameOutcome = outcome;
+  yay.disabled = true;
+  boo.disabled = true;
+  msgEl.textContent = message;
+
+  canvas.style.display = "none";
+  endScreen.classList.add("active");
+
+  if(outcome === "win"){
+    winArt.style.display = "block";
+    loseArt.style.display = "none";
+    statusEl.textContent = "СПАСЛИСЬ!";
+    statusEl.className = "value safe";
+  }else{
+    winArt.style.display = "none";
+    loseArt.style.display = "block";
+    statusEl.textContent = "ПОЙМАН!";
+    statusEl.className = "value danger";
+  }
+}
+function setupNextRoundMessage(kind){
+  const nextLimit = currentRoundLimit();
+
+  if(kind === "yay"){
+    msgEl.textContent = `УРА! Герой и призрак переместились вперёд вместе — дистанция сохранилась. Следующий раунд: ${nextLimit.toFixed(0)} сек.`;
+  }else if(kind === "boo"){
+    msgEl.textContent = `БУГА-ГА! Герой упал и остался на месте. Призрак сократил дистанцию РОВНО ВДВОЕ. Следующий раунд: ${nextLimit.toFixed(0)} сек.`;
+  }else{
+    msgEl.textContent = `Время вышло. Призрак использовал заминку и резко сократил разрыв. Следующий раунд: ${nextLimit.toFixed(0)} сек.`;
+  }
+}
+function nextRound(kind){
+  if(!running) return;
+
+  if(kind === "yay"){
+    successCount++;
+
+    // Both jump by the exact same route distance:
+    // the gap at the moment of the answer is preserved.
+    const jump = Math.min(SUCCESS_JUMP, 0.985 - heroP);
+    heroP += jump;
+    ghostP += jump;
+
+  }else if(kind === "boo"){
+    // Hero does NOT move.
+    // Ghost covers exactly half of the current gap.
+    const currentGap = Math.max(0, gap());
+    ghostP += currentGap * 0.5;
+
+    fallenUntil = performance.now() + 1600;
+    ghostLungeUntil = performance.now() + 900;
+
+  }else{
+    // Timeout: hero stands still; ghost eats 55% of the current gap.
+    const currentGap = Math.max(0, gap());
+    ghostP += currentGap * TIMEOUT_FRACTION;
+
+    fallenUntil = performance.now() + 1300;
+    ghostLungeUntil = performance.now() + 750;
+  }
+
+  // Immediate capture check after any consequence.
+  if(ghostP >= heroP - 0.0005){
+    ghostP = heroP;
+    endGame("lose", "Призрак настиг героя.");
+    return;
+  }
+
+  // Exactly 10 tasks. To escape, the hero must have progressed far enough.
+  if(round >= TOTAL){
+    const EXIT_THRESHOLD = 0.82;
+    if(heroP >= EXIT_THRESHOLD){
+      endGame("win", "Все 10 заданий закончены. Герой успел вырваться из проклятого дома!");
+    }else{
+      endGame("lose", "Задания закончились, но герой не успел добраться до выхода. Призрак настиг его в доме.");
+    }
+    return;
+  }
+
+  round++;
+  roundLimit = currentRoundLimit();
+  timeLeft = roundLimit;
+  setupNextRoundMessage(kind);
+  hud();
+}
+
+yay.onclick = () => nextRound("yay");
+boo.onclick = () => nextRound("boo");
+restart.onclick = reset;
+
+document.addEventListener("keydown",(e)=>{
+  if(e.key.toLowerCase()==="u") nextRound("yay");
+  if(e.key.toLowerCase()==="b") nextRound("boo");
+});
+
+function reset(){
+  round = 1;
+  successCount = 0;
+  heroP = START_HERO;
+  ghostP = START_GHOST;
+  roundLimit = currentRoundLimit();
+  timeLeft = roundLimit;
+  running = true;
+  gameOutcome = null;
+  canvas.style.display = "block";
+  endScreen.classList.remove("active");
+  winArt.style.display = "none";
+  loseArt.style.display = "none";
+  lastTime = performance.now();
+  fallenUntil = 0;
+  ghostLungeUntil = 0;
+  yay.disabled = false;
+  boo.disabled = false;
+  msgEl.textContent = "Задание 1. У вас есть 40 секунд. Призрак уже движется.";
+  hud();
+}
+reset();
+
+function frame(now){
+  const dt = Math.min(.08, (now-lastTime)/1000);
+  lastTime = now;
+
+  if(running){
+    timeLeft -= dt;
+
+    // Constant chase between answers.
+    ghostP += GHOST_SPEED * dt;
+
+    if(ghostP >= heroP - 0.0005){
+      ghostP = heroP;
+      endGame("lose", "Призрак догнал героя прямо в коридоре.");
+    }else if(timeLeft <= 0){
+      timeLeft = 0;
+      nextRound("timeout");
+    }
+  }
+
+  // Once an ending is active the canvas is hidden;
+  // only the dedicated DOM ending screen remains visible.
+  if(running){
+    drawHouse();
+
+    const hp = pointOnPath(heroP);
+    const gp = pointOnPath(ghostP);
+
+    drawGhost(gp, now < ghostLungeUntil);
+    drawHero(hp, now < fallenUntil);
+
+    pixelText("ПРИЗРАК", gp.x-48, gp.y-44, 13, "#d7dcef");
+    pixelText("ГЕРОЙ", hp.x-33, hp.y-46, 13, "#a8c5ef");
+  }
+
+  hud();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
